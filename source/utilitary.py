@@ -8,18 +8,19 @@ import imgaug as ia
 import imgaug.augmenters as iaa
 from imgaug.augmentables.bbs import BoundingBox, BoundingBoxesOnImage
 import numpy as np
+import pandas as pd
 
-def extract_bb(img_name, csv_name):
-    with open(csv_name, newline='') as csvfile:
-        spamreader = csv.reader(csvfile, delimiter=',', quotechar='|')
-        bb_list = []
-        for row in spamreader:
-            if row[5] == img_name:
-                bb_list.append(BoundingBox(int(row[1]), 
-                                            int(row[2]),
-                                            int(row[1]) + int(row[3]), 
-                                            int(row[2]) + int(row[4])))
-        return bb_list
+def extract_bb(img_name, df):
+    bb_list = []
+    rows =  df[df["image_name"] == img_name] 
+    for index, row in rows.iterrows():
+        bb_list.append(BoundingBox(int(row["bbox_x"]), 
+                                    int(row["bbox_y"]),  
+                                    int(row["bbox_x"]) + int(row["bbox_width"]), 
+                                    int(row["bbox_y"]) + int(row["bbox_height"])))
+
+    label = rows.iloc[0]["label_name"]
+    return bb_list, label
 
 def shift_bbs(bbs, x, y):
     bb_list = []
@@ -31,45 +32,85 @@ def random_texture(rootdir):
     listdir = os.listdir(path=rootdir+'/textures')
     randcat = listdir[randrange(len(listdir))]
     texlist = os.listdir(path=rootdir+'/textures/'+randcat)
+    print(randcat)
+    print(len(texlist))
     randtext = rootdir+'/textures/'+randcat+'/'+texlist[randrange(len(texlist))]
     
     return Image.open(randtext)
 
-def augment_image(rootdir, image_name, csv_name):
+def foreground_card(rootdir, row_nb, df):
     ia.seed(randrange(1000))
     
+    image_name = df.iloc[row_nb]["image_name"]
     image = imageio.imread(rootdir + "photo-tarot/" + image_name)
-    bbs = BoundingBoxesOnImage(extract_bb(image_name, rootdir + csv_name), shape=image.shape)
+
+
+            
+    bb_list, label = extract_bb(image_name, df)
+    bbs = BoundingBoxesOnImage(bb_list, shape=image.shape)
 
     # Define transformations windows
     seq = iaa.Sequential([
         iaa.Multiply((0.5, 1.5)), # change brightness, doesn't affect BBs
-        iaa.Resize((0.25,0.5)),
+        iaa.Resize((0.25,0.4)),
         iaa.Affine(
             rotate=(-180, 180),
-            shear=(-50, 50),
+            shear=(-40, 40),
             mode = "constant",
-            scale=(0.2, 0.6))])
+            scale=(0.4, 0.5))])
 
     # Augment BBs and images.
     image_aug, bbs_aug = seq(image=image, bounding_boxes=bbs)
 
     # Create mask on newly created pixels
     h, w = image_aug.shape[:2]
+    
     rgba = np.dstack((image_aug, np.zeros((h,w),dtype=np.uint8)+255))
     mBlack = (rgba[:, :, 0:3] == [0,0,0]).all(2)
     rgba[mBlack] = (0,255,0,0)
 
-    # Pasting transformed card on random texture
-    foreground = Image.fromarray(np.uint8(rgba)).convert('RGBA')
+    #return label and all
+    
+    return Image.fromarray(np.uint8(rgba)).convert('RGBA'), bbs_aug
+
+
+def augment_image(rootdir, nb_carte, csv_name):
+
+    label = {}
+    label["bbs"] = []
+    df = pd.read_csv(rootdir + csv_name)
+    nb_row = df.shape[0]
+
     background = random_texture(rootdir)
-    background.paste(foreground, (50,50), foreground)   # RANDOM THIS TAKING INTO ACCOUNT 
-                                                        # FOREGROUND SIZE TO NOT CUT CARD
 
-    paste = np.asarray(background)
+    for i in range(nb_carte):
+        foreground, bbs_aug = foreground_card(rootdir, randrange(nb_row), df)
+        w, h = foreground.size
 
-    bbs2 = BoundingBoxesOnImage(shift_bbs(bbs_aug, 50, 50), shape=paste.shape)
-    img_final = bbs2.draw_on_image(paste, size=2, color=[0, 0, 255])
+        # pixels = foreground.load() # create the pixel map
+        # for i in range(w): # for every pixel:
+        #     for j in range(h):
+        #         if pixels[i,j] == (255, 0, 0):
+        #             pixels[i,j] = (254, 0 ,0)
 
-    plt.imshow(img_final)
+        shift_x = randrange(background.size[0] - w)
+        if background.size[1] - h > 0:
+            shift_y = randrange(background.size[1] - h)
+        else:
+            shift_y = 0
+
+        background.paste(foreground, (shift_x, shift_y), foreground)   
+        background = np.asarray(background)
+
+        bbs2 = BoundingBoxesOnImage(shift_bbs(bbs_aug, shift_x, shift_y), shape=background.shape)
+        background = bbs2.draw_on_image(background, size=2, color=[0, 0, 255])
+        background = Image.fromarray(np.uint8(background))
+        
+        label['bbs'].append(bbs2)
+
+    label['img'] = background
+
+    background = np.asarray(background)
+    plt.imshow(background)
+    plt.title(len(label['bbs']))
     plt.show()
