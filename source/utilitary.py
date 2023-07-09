@@ -79,9 +79,7 @@ def detect_overlap(labels, carte, newlabs):
 
     for label in labels:
         check = carte.intersection(label, default="no_overlap")
-        if check != "no_overlap" and check.area > 50:
-            print("Deleting : "+label.label)
-            print(check.area)
+        if check != "no_overlap" and check.area > 35:
             labels.remove(label)
 
     for lab in newlabs:
@@ -103,16 +101,18 @@ def augment_image(rootdir, nb_carte, csv_name):
         foreground, bbs_aug = foreground_card(rootdir, randrange(nb_row), df)
         w, h = foreground.size
 
-        shift_x = randrange(background.size[0] - w)
-        if background.size[1] - h > 0:
-            shift_y = randrange(background.size[1] - h)
+        shift_x = randrange(background.size[0] - int(w*0.8))
+        if background.size[1] - (h/5) >= 0:
+            shift_y = randrange(background.size[1] - int(h*0.8))
         else:
             shift_y = 0
+        
+        # shift_x = randrange(background.size[0])
+        # shift_y = randrange(background.size[1])
 
         background.paste(foreground, (shift_x, shift_y), foreground)   
         background = np.asarray(background)
 
-        # labels.append(BoundingBoxesOnImage(shift_bbs(bbs_aug, shift_x, shift_y), shape=background.shape))
         bbs = BoundingBoxesOnImage(shift_bbs(bbs_aug, shift_x, shift_y), shape=background.shape)
         bb_carte = bbs[0]
         new_labels = []
@@ -120,18 +120,13 @@ def augment_image(rootdir, nb_carte, csv_name):
             new_labels.append(label)
 
         labels = detect_overlap(labels, bb_carte, new_labels)
-
         
-        background = bb_carte.draw_on_image(background, size=1, color=[255, 0, 0])
+        # background = bb_carte.draw_on_image(background, size=1, color=[255, 0, 0])
         background = Image.fromarray(np.uint8(background))
 
     background = np.asarray(background)
-    print(labels)
-    for bb in labels:
-        if bb.label == "carte":
-            background = bb.draw_on_image(background, size=1, color=[255, 0, 0])
-        else:
-            background = bb.draw_on_image(background, size=1, color=[0, 0, 255])
-    plt.imshow(background)
-    plt.title(len(labels))
-    plt.show()
+
+    # for bb in labels:
+    #     background = bb.draw_on_image(background, size=1, color=[0, 0, 255])
+    #     print(bb)
+    return background, labels
