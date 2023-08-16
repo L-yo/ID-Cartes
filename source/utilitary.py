@@ -1,7 +1,10 @@
 import os
-import csv
-from random import randrange
+import shutil
 import matplotlib.pyplot as plt
+import matplotlib.image as pltmg
+import csv
+import os
+from random import randrange
 from PIL import Image
 import imageio.v2 as imageio 
 import imgaug as ia
@@ -32,10 +35,12 @@ def shift_bbs(bbs, x, y):
     return bb_list
 
 def random_texture(rootdir):
-    listdir = os.listdir(path=rootdir+'/textures')
+    listdir = os.listdir(path=rootdir+'textures')
     randcat = listdir[randrange(len(listdir))]
-    texlist = os.listdir(path=rootdir+'/textures/'+randcat)
-    randtext = rootdir+'/textures/'+randcat+'/'+texlist[randrange(len(texlist))]
+    texlist = os.listdir(path=rootdir+'textures/'+randcat)
+    randtext = rootdir+'textures/'+randcat+'/'+texlist[randrange(len(texlist))]
+
+    print(randtext)
     return Image.open(randtext)
 
 def foreground_card(rootdir, row_nb, df):
@@ -87,6 +92,30 @@ def detect_overlap(labels, carte, newlabs):
 
     return labels
 
+def remove_data_saved(dir):
+    try:
+        shutil.rmtree(dir)
+        print("directory is removed successfully")
+    except OSError as x:
+        print("Error occured: %s : %s" % (dir, x.strerror))
+
+def save_dataset(nb, dir):
+    if not os.path.exists(dir):
+        os.makedirs(dir)
+        os.makedirs(dir+"/images")
+
+    with open(dir+"labels.csv", 'w', newline='') as f:
+        for i in range(nb):
+            img, labels = augment_image("Data/", randrange(1,3), "labels_tarot-bb_2023-05-29-09-58-51.csv")
+            imgname = str(i)+'.png'
+            pltmg.imsave(dir+"images/"+imgname, img)
+            for bb in labels:
+                # print(bb)
+                row = imgname
+                row+= ","+str(bb.label)+","+str(bb.x1)+","+str(bb.y1)+","+str(bb.x2)+","+str(bb.y2)
+                print(row)
+                f.write(row+'\n')
+
 
 def augment_image(rootdir, nb_carte, csv_name):
 
@@ -96,19 +125,23 @@ def augment_image(rootdir, nb_carte, csv_name):
     nb_row = df.shape[0]
 
     background = random_texture(rootdir)
+    while background.size[1] < 400:
+        background = random_texture(rootdir)
 
     for i in range(nb_carte):
         foreground, bbs_aug = foreground_card(rootdir, randrange(nb_row), df)
         w, h = foreground.size
 
-        shift_x = randrange(background.size[0] - int(w*0.8))
+        print(background.size[0])
+        print(w)
+        print(background.size[1])
+        print(h)
+
+        shift_x = randrange(background.size[0] - w)
         if background.size[1] - (h/5) >= 0:
-            shift_y = randrange(background.size[1] - int(h*0.8))
+            shift_y = randrange(background.size[1] - h)
         else:
             shift_y = 0
-        
-        # shift_x = randrange(background.size[0])
-        # shift_y = randrange(background.size[1])
 
         background.paste(foreground, (shift_x, shift_y), foreground)   
         background = np.asarray(background)
@@ -120,8 +153,6 @@ def augment_image(rootdir, nb_carte, csv_name):
             new_labels.append(label)
 
         labels = detect_overlap(labels, bb_carte, new_labels)
-        
-        # background = bb_carte.draw_on_image(background, size=1, color=[255, 0, 0])
         background = Image.fromarray(np.uint8(background))
 
     background = np.asarray(background)
