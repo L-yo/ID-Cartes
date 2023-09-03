@@ -37,11 +37,15 @@ def shift_bbs(bbs, x, y):
 def random_texture(rootdir):
     listdir = os.listdir(path=rootdir+'textures')
     randcat = listdir[randrange(len(listdir))]
+    while randcat == '.directory':
+        randcat = listdir[randrange(len(listdir))]
     texlist = os.listdir(path=rootdir+'textures/'+randcat)
-    randtext = rootdir+'textures/'+randcat+'/'+texlist[randrange(len(texlist))]
+    randtext = texlist[randrange(len(texlist))]
+    while randtext == '.directory':
+        randtext = texlist[randrange(len(texlist))]
 
-    print(randtext)
-    return Image.open(randtext)
+    textpath = rootdir+'textures/'+randcat+'/'+randtext
+    return Image.open(textpath)
 
 def foreground_card(rootdir, row_nb, df):
     ia.seed(randrange(1000))
@@ -105,15 +109,16 @@ def save_dataset(nb, dir):
         os.makedirs(dir+"/images")
 
     with open(dir+"labels.csv", 'w', newline='') as f:
+        header = "image,label,x1,y1,x2,y2"
+        f.write(row+'\n')
         for i in range(nb):
+            print("Image n°"+str(i+1)+"/"+str(nb))
             img, labels = augment_image("Data/", randrange(1,3), "labels_tarot-bb_2023-05-29-09-58-51.csv")
             imgname = str(i)+'.png'
             pltmg.imsave(dir+"images/"+imgname, img)
             for bb in labels:
-                # print(bb)
                 row = imgname
                 row+= ","+str(bb.label)+","+str(bb.x1)+","+str(bb.y1)+","+str(bb.x2)+","+str(bb.y2)
-                print(row)
                 f.write(row+'\n')
 
 
@@ -125,17 +130,14 @@ def augment_image(rootdir, nb_carte, csv_name):
     nb_row = df.shape[0]
 
     background = random_texture(rootdir)
-    while background.size[1] < 400:
+    while background.size[1] < 420:
         background = random_texture(rootdir)
 
     for i in range(nb_carte):
         foreground, bbs_aug = foreground_card(rootdir, randrange(nb_row), df)
         w, h = foreground.size
 
-        print(background.size[0])
-        print(w)
-        print(background.size[1])
-        print(h)
+        print("texture height : " + str(background.size[1]) + " card height : "+ str(h))
 
         shift_x = randrange(background.size[0] - w)
         if background.size[1] - (h/5) >= 0:
